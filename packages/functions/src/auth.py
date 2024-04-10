@@ -66,11 +66,14 @@ def handler(event, context):
     """This function authorizes API gateway requests"""
     try:
         authorized = False
+        scopes_raw = None
+        roles_raw = None
         
         # validate token against JWKS well-known endpoint
         access_token = event["headers"]["authorization"].split(" ")[1]
         token = validate_token(access_token, client)
-        scopes = set(token["scope"].split(" "))
+        scopes_raw = token["scope"]
+        scopes = set(scopes_raw.split(" "))
         
         # if scope in ALLOWED_SCOPES then this is client credentials token
         if scopes.intersection(set(ALLOWED_SCOPES)):
@@ -83,12 +86,19 @@ def handler(event, context):
         elif "cognito:groups" in token:
             response = cognito_client.get_user(AccessToken=access_token)
             attributes = get_attributes(response)
-            roles = set(get_attribute("custom:roles", attributes).split("|"))
+            roles_raw = get_attribute("custom:roles", attributes)
+            roles = roles_raw.split("|")
             if set(roles).intersection(set(ALLOWED_ROLES)):
                 logger.info("Authorized user access token")
                 authorized = True
 
-        return {"isAuthorized": authorized}
+        return {
+            "isAuthorized": authorized,
+            "context": {
+                "scopes": scopes_raw,
+                "roles": roles_raw,
+            }
+        }
 
     except Exception as e:
         logging.info(f'Error - {e}')
